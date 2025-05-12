@@ -1,7 +1,5 @@
 # Falcon Container Sensor
 
-# Configure GCP Credentials to Conformity Bot Access
-
 ## Overview
 
 <walkthrough-tutorial-duration duration="20"></walkthrough-tutorial-duration>
@@ -79,13 +77,13 @@ gcloud run services list
 
 1. **Falcon Client ID:** Specify the CrowdStrike API Key ID.
 1. **Falcon Cliente Secret** Specify the CrowdStrike API Secret.
-1. **Service Name:** Specify the existing cloud run service name that you wish to protect.
+1. **Falcon Tag:** Specify a tag for Falcon Sensor.
 1. **Location:** Specify the location of your service.
 
 Specify the following fields and execute the deployment script in the Cloud Shell:
 
 ```sh
-./cloud-run-patching.sh -f <FALCON_CLIENT_ID> -c <FALCON_CLIENTE_SECRET> -s <SERVICE_NAME> -r <LOCATION>
+./cloud-run-patching.sh -u <FALCON_CLIENT_ID> -s <FALCON_CLIENT_SECRET> -r <LOCATION> -s <TAG>
 ```
 
 --------------------------------
@@ -93,10 +91,3 @@ Specify the following fields and execute the deployment script in the Cloud Shel
 ### Step 4: Re-deploy your application with the new image
 
 The new "patched" image has been created and sent to your registry
-
-
-## Cleanup Environment
-
-# List Cloud One Conformity Service Accounts
-
-gcloud iam service-accounts list --filter=cloud-one-conformity-bot
