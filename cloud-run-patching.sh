@@ -86,7 +86,7 @@ echo ""
 {
 
   # Get list of Google Cloud services
-  services=$(gcloud run services list --platform managed --region=$region --format="value(SERVICE)")
+  services=$(gcloud run services list --platform managed --region=$region --filter="spec.template.metadata.annotations['run.googleapis.com/execution-environment']=gen2" --format="value(SERVICE)")
 
 
   # Display list of services
