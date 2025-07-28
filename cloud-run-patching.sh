@@ -6,7 +6,7 @@ usage() {
     echo "  -r: GCP region (required)"
     echo "  -u: CrowdStrike falcon client ID (required)"
     echo "  -s: CrowdStrike falcon client secret (required)"
-    echo "  -t: CrowdStrike falcon tag (required)"
+    echo "  -t: CrowdStrike falcon tag (optional)"
     exit 1
 }
 
@@ -43,22 +43,21 @@ handle_error() {
 
 # Function to check if a repository exists
 check_repository_exists() {
-    gcloud artifacts repositories list \
-    --filter="name ~ ^$repository_name$" \
+    gcloud artifacts repositories describe "$repo_name" \
     --location=$region >/dev/null 2>&1
     return $?
 }
 
 # Function to create a repository for falcon container sensor
 create_repository() {
-    gcloud artifacts repositories create "$repository_name" \
+    gcloud artifacts repositories create "$repo_name" \
     --repository-format=docker \
     --location=$region \
     --description="Falcon Container Sensor repository" \
-    --mode=standard  >/dev/null 2>&1
+    --mode=standard-repository  >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "Repository $1 created successfully."
-    else
+    else    
         echo "Failed to create repository $1."
         exit 1
     fi
@@ -105,17 +104,6 @@ echo ""
   # Grab container image from service 
   echo "Assessing service $service_name"
   export images=$(gcloud run services describe $service_name --region $region --format="yaml" | grep 'image:' | awk '{print $3}')
-  #export container=$(gcloud run services describe $service_name --region $region --format="json" | jq '.spec.template.spec.containers[].name')
-
-  # Variables
-  export FALCON_TAG=$falcon_tag
-  export FALCON_CLIENT_ID=$falcon_client_id
-  export FALCON_CLIENT_SECRET=$falcon_client_secret
-  export FALCON_CID=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) -t falcon-container --get-cid)
-  export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) -t falcon-container | tail -1)
-  export FALCON_IMAGE_TAG=$(echo $LATESTSENSOR | cut -d':' -f 2)
-  export PROJECT_ID=$(gcloud config get-value project)
-
   
   echo ""
   read -p "Do you have an existing GCP GAR repository for Falcon Container Sensor (yes/no)? " has_repo
@@ -146,11 +134,11 @@ echo ""
         exit 1
     fi
 
-    # Get selected task definition
+    # Get selected repository
     repo_name="${gar_repositories[$((selection-1))]}"  
 
   else
-    repo_name="falcon-sensor/falcon-container"
+    repo_name="crowdstrike"
     echo "Checking if repository $repo_name exists..."
     if check_repository_exists "$repo_name"; then
         echo "Repository $repo_name already exists."
@@ -160,27 +148,27 @@ echo ""
     fi
   fi
 
-
   REPO_URI=$(gcloud artifacts repositories describe $repo_name --location=$region --format="value(registryUri)")
   REPO_PACKAGE=$(gcloud artifacts packages list --repository=$repo_name --location=$region --format="value(PACKAGE)")
-  FALCON_URI=$REPO_URI/$REPO_PACKAGE
+  FALCON_URI=$REPO_URI/falcon-sensor
+
+  # Falcon Container Sensor Variables
+  export FALCON_TAG=$falcon_tag
+  export FALCON_CLIENT_ID=$falcon_client_id
+  export FALCON_CLIENT_SECRET=$falcon_client_secret
+  export FALCON_IMAGE_FULL_PATH=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) -t falcon-container --get-image-path )
+  export FALCON_CID=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) -t falcon-container --get-cid)
+  export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) -t falcon-container -c $REPO_URI)
+  export FALCON_IMAGE_TAG=$(echo $FALCON_IMAGE_FULL_PATH | cut -d':' -f 2)
 
   # Log in to the private GCR repository using gcloud CLI.
   echo "Authenticating at your GCP Artifact Registry"
   gcloud auth configure-docker $region-docker.pkg.dev
 
-
-  # tag and push container sensor to your falcon registry
-  echo "Pushing latest falcon container sensor image to $repo_name"
-  docker tag "$LATESTSENSOR" "$FALCON_URI":"$FALCON_IMAGE_TAG"
-  docker push "$FALCON_URI":"$FALCON_IMAGE_TAG"
-
   ARCH=$(uname -m)
   for image in $images; do
-    echo "Pulling image $image locally to start the patching process"
-    pull_image=$(docker pull $image)
     IMAGE_REPO=$(echo $image | cut -d'@' -f1 )
-    IMAGE_TAG=$(echo $image | cut -d':' -f 2 )
+    #IMAGE_TAG=$(echo $image | cut -d':' -f2 )
     if [ "$ARCH" == "arm64" ]; then
         docker run --platform linux/amd64 --user 0:0 \
           -v ${HOME}/.docker/config.json:/root/.docker/config.json \
@@ -210,16 +198,12 @@ echo ""
     fi
 
     echo ""
-    echo "Pushing patched image "$IMAGE_REPO":patched to GCP"
+    echo "Pushing patched image "$image":patched to GCP"
 
     # Push new patched image to registry
     PATCHED_IMAGE="$IMAGE_REPO":patched
     push_images=$(docker push "$PATCHED_IMAGE")
 
   done
-
-  # Update the Cloud Run Service with the new image 
-  # gcloud run services update $SERVICE_NAME --image=$PACTHED_IMAGE --region=$SERVICE_GCP_REGION --execution-environment=gen2
-  # gcloud run deploy todoimg --container todoimg-1 --image=$PACTHED_IMAGE --port='8080' --container falcon-container-sensor --image=$FALCON_IMAGE_URI --execution-environment=gen2 --region=$SERVICE_GCP_REGION
 
 } 
