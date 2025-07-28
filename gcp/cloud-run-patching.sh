@@ -167,8 +167,8 @@ echo ""
 
   ARCH=$(uname -m)
   for image in $images; do
+    pull_image=$(docker pull $image)
     IMAGE_REPO=$(echo $image | cut -d'@' -f1 )
-    #IMAGE_TAG=$(echo $image | cut -d':' -f2 )
     if [ "$ARCH" == "arm64" ]; then
         docker run --platform linux/amd64 --user 0:0 \
           -v ${HOME}/.docker/config.json:/root/.docker/config.json \
@@ -198,7 +198,7 @@ echo ""
     fi
 
     echo ""
-    echo "Pushing patched image "$image":patched to GCP"
+    echo "Pushing patched image "$IMAGE_REPO":patched to GCP"
 
     # Push new patched image to registry
     PATCHED_IMAGE="$IMAGE_REPO":patched
